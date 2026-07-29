@@ -14,7 +14,6 @@ keywords = ["link", "link-messenger", "otp", "2fa", "authentication", "verificat
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -38,6 +37,9 @@ dev = [
     "respx>=0.21",
     "mypy>=1.10",
     "ruff>=0.5",
+    # Metadata 2.4 (PEP 639 License-Expression) needs twine >= 6.1
+    "build>=1.2",
+    "twine>=6.1",
 ]
 
 [project.urls]
