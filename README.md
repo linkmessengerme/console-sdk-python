@@ -1,16 +1,16 @@
 # link-console-sdk
 
 Official **Python** SDK for the **Link Developer Platform** (Console API).
-Send OTP codes to your users through the Link bot in a couple of lines — with a
+Send OTP codes and read authorized Login/Mini Apps user data — with a
 **sync** and an **async** client that share the same API.
 
 - Sync (`ConsoleClient`) **and** async (`AsyncConsoleClient`), both on `httpx`.
-- OAuth2 `client_credentials` via `private_key_jwt` (Ed25519) — tokens are
+- OTP OAuth2 `client_credentials` via `private_key_jwt` (Ed25519) — app tokens are
   minted, cached and re-minted transparently.
-- Automatic idempotency keys, transparent retries with backoff + jitter.
+- Automatic idempotency keys and retries for OTP; per-call user tokens for UserInfo.
 - Fully typed (`py.typed`), typed errors you can branch on.
 
-> Requires **Python ≥ 3.10**. Runtime deps: `httpx`, `cryptography`.
+> Requires **Python ≥ 3.10**. Runtime deps: `httpx`, `cryptography`, `PyJWT`.
 
 ## Install
 
@@ -48,10 +48,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Authentication
+## OTP authentication
 
-The SDK authenticates with OAuth2 `client_credentials` using a `private_key_jwt`
-client assertion (Ed25519). On the first call (and whenever the cached token is
+OTP authenticates with OAuth2 `client_credentials` using a `private_key_jwt`
+client assertion (Ed25519). On the first OTP call (and whenever the cached token is
 near expiry, or after a `401`), it signs a short-lived assertion with your
 private key, exchanges it at `token_url` for an app access token, and caches that
 token until it expires. This is the Firebase Admin SDK model: the private key
@@ -129,9 +129,111 @@ phone.
 The response reports `template_used` (a template id or `"fallback"`) and
 `locale_used` (the locale actually used after resolution).
 
+## Login and Mini Apps UserInfo
+
+For Login with your own backend, use standalone `LoginClient` or
+`AsyncLoginClient` below; they require no OTP key file.
+
+Use the same client with a **user access token** supplied per call:
+
+```python
+with ConsoleClient.from_key_file("link-oauth-client.json") as client:
+    # Login: access token from the user's completed Login authorization flow.
+    user = client.login.get_user_info(login_access_token, expected_sub=verified_session_sub)
+    if user.phone_number is not None:
+        pass  # Use the number for the authorized operation; do not log it.
+
+    # Mini Apps: accessToken from LinkMiniApp.init() (the ma_ token).
+    mini_user = client.mini_apps.get_user_info(
+        mini_app_access_token, expected_sub=verified_mini_app_session_sub,
+    )
+
+# Both methods also exist on AsyncConsoleClient:
+async with AsyncConsoleClient.from_key_file("link-oauth-client.json") as client:
+    user = await client.login.get_user_info(login_access_token)
+    mini_user = await client.mini_apps.get_user_info(mini_app_access_token)
+```
+
+Only the access token is required. Do not pass a user ID, a scope list, an ID
+token, or an app `client_credentials` token. Request `phone` during Login
+authorization or enable it in Mini Apps Permissions; the project must have the
+scope approved and the user must consent. The API returns currently authorized
+fields. `phone_number` is `None` when unavailable. `phone_number_verified` is a
+separate optional bool, currently omitted by Link; absence does not mean `False`
+or proof of ownership. Login also returns `name`, `preferred_username`, `picture`;
+Mini Apps returns optional `profile` (`name`, `username`, `avatar_url`).
+
+If the frontend obtained the token, send it through your own authenticated HTTPS
+API. `expected_sub` optionally compares against `sub` from your already verified
+Login/Mini App session. These methods do not verify an ID token or establish a
+backend session themselves.
+
+UserInfo calls `GET /oauth/v1/userinfo` or `GET /miniapps/v1/userinfo` at the
+configured `base_url`. Use a trusted HTTPS API origin with no path prefix, query,
+credentials or fragment (HTTP on loopback is allowed for development). Requests
+use only the supplied user bearer, omit cookies/default client auth/query
+parameters, and never follow redirects, exchange app tokens, retry, or cache user
+data. Responses are limited to 64 KiB. `InvalidResponseError` covers malformed
+data or subject mismatch; errors omit raw response data and transport causes.
+
+Handle `AuthenticationError` by obtaining a fresh token through the original
+authorization/session flow. Mini App tokens last 60 seconds; the host reissues
+an expired one as a new launch, and the frontend can obtain the current token from `init()` and pass it to
+the backend. The server SDK does not refresh either kind of user token.
+
+## Verify a Login ID token on your backend
+
+```python
+from link_console_sdk import LoginClient
+
+# Reuse a client for your process/server lifetime; public Console configuration only.
+with LoginClient(
+    issuer="https://api-sdk.linkmessenger.me",
+    api_base_url="https://api-sdk-fr.linkmessenger.me",  # optional regional origin
+    client_ids=["YOUR_IOS_LOGIN_CLIENT_ID", "YOUR_ANDROID_LOGIN_CLIENT_ID"],
+) as login:
+    # saved_challenge was created on YOUR backend before sign-in, then consumed once.
+    identity = login.verify_id_token(id_token, nonce=saved_challenge.nonce)
+    profile = login.get_user_info(login_access_token, expected_sub=identity.sub)
+    # Map (identity.issuer, identity.sub) to your account. Check profile.phone_number
+    # if your application requires a phone, then issue your own session tokens.
+```
+
+The async API uses `async with AsyncLoginClient(...)`,
+`await login.verify_id_token(id_token, nonce=...)` and
+`await login.get_user_info(access_token, expected_sub=...)` with the same options.
+Reuse the async client within one event loop. An optional `http_client` accepts
+an `httpx.Client` / `httpx.AsyncClient`; an injected client remains caller-owned.
+
+Verification checks EdDSA signature, `kid`, exact configured issuer, one allowed
+audience, matching `azp`, subject, `iat`/`exp`/optional `nbf` (30-second clock
+tolerance), and required expected nonce. It returns frozen `IDTokenClaims`:
+`issuer`, `sub`, `client_id`, `nonce`, `issued_at`, `expires_at` (Unix seconds).
+Access tokens and refreshed ID tokens without nonce are rejected. This verifier
+is for Link Login, not Mini App tokens.
+
+`IDTokenError` means rejected identity; `LoginKeySourceError` means discovery/keys
+are unavailable; `ConfigError` means invalid configuration. Discovery and JWKS
+use only the configured API origin, with no credentials, cookies or redirects.
+Keys are cached for five minutes, concurrent loads are coalesced, unknown-key
+refreshes are limited to once per 30 seconds, failures can retry after one
+second. HTTP operations have five-second timeouts; async key loading has a
+five-second overall deadline. No app private key is required.
+
+Create nonce on the backend using `secrets.token_urlsafe(32)`, save it in a
+short-lived one-use challenge, and pass it to native sign-in. Allowed format:
+32–256 base64url characters. Never use the incoming JWT's nonce as the expected
+value. The SDK compares nonce; your backend atomically consumes the challenge.
+Signature verification does not query revocation or issue your app session.
+Read fresh authorized profile/phone through UserInfo with the verified subject.
+
+The complete [own-backend example](https://github.com/linkmessengerme/console-sdk-node/tree/main/examples/own-backend)
+shows the same flow in Node, including Swift/Kotlin integration, one-use challenge,
+own access/refresh tokens, rotation, refresh reuse revocation and logout.
+
 ## Idempotency & retries
 
-Every request carries an idempotency key (auto-generated unless you pass one).
+Every OTP request carries an idempotency key (auto-generated unless you pass one).
 Because the request is idempotent, the SDK safely **retries** transient failures
 — network errors, timeouts, `408/429/5xx`, and the "request in progress"
 conflict — with exponential backoff + jitter. Pass your own `idempotency_key` to
@@ -173,8 +275,9 @@ except ValidationError as err:
 | `ValidationError` | Bad phone, code or idempotency key (raised before any request) |
 | `ConfigError` | Invalid credentials or client options |
 | `AuthenticationError` | `INVALID_TOKEN` / `INSUFFICIENT_SCOPE`, or a rejected client assertion |
+| `InvalidResponseError` | Invalid UserInfo data or subject mismatch |
 | `IdempotencyError` | `IDEMPOTENCY_KEY_CONFLICT` (same key, different payload) |
-| `RateLimitError` | `TOO_MANY_REQUESTS` (carries `retry_after`) |
+| `RateLimitError` | `TOO_MANY_REQUESTS` (`retry_after` may be absent) |
 | `APIError` | Any other non-2xx (`status_code`, `code`, `details`, `request_id`) |
 | `ConnectionError` | Network failure, timeout, or abort |
 
@@ -188,7 +291,7 @@ except ValidationError as err:
 | `client_id`, `private_key`, `base_url` | — | Credentials + endpoint (required for the direct constructor; read from the key by `from_key_file` / `from_credentials_json`) |
 | `token_url`, `issuer` | derived from `base_url` | Override the token endpoint / assertion audience |
 | `timeout` | `10.0` | Per-request timeout, in seconds |
-| `retry` | `RetryConfig(max_retries=2, initial_backoff=0.1, max_backoff=2.0)` | Retry policy, or `False` |
+| `retry` | `RetryConfig(max_retries=2, initial_backoff=0.1, max_backoff=2.0)` | OTP retry policy, or `False` |
 | `user_agent_suffix` | — | Appended to the `User-Agent` |
 | `http_client` | managed | Inject your own `httpx.Client` / `httpx.AsyncClient` (proxy, instrumentation, tests) |
 

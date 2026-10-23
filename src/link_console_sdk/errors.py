@@ -36,11 +36,15 @@ class LinkError(Exception):
 
 
 class ConfigError(LinkError):
-    """Invalid credentials or client configuration (raised at construction)."""
+    """Invalid credentials or client configuration."""
 
 
 class ValidationError(LinkError):
-    """Invalid request input — phone, code or idempotency key (raised locally)."""
+    """Invalid request input, including user tokens (raised before I/O)."""
+
+
+class InvalidResponseError(LinkError):
+    """Invalid UserInfo JSON, schema, size or subject; excludes raw response data."""
 
 
 class ConnectionError(LinkError):  # noqa: A001 — deliberate parity with Go/Node SDKs

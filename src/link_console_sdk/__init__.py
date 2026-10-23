@@ -26,6 +26,7 @@ from .errors import (
     ConfigError,
     ConnectionError,
     IdempotencyError,
+    InvalidResponseError,
     LinkError,
     RateLimitError,
     ValidationError,
@@ -37,8 +38,19 @@ from .errors import (
     is_rate_limit_error,
     is_validation_error,
 )
+from .login import AsyncLoginClient, IDTokenClaims, IDTokenError, LoginClient, LoginKeySourceError
 from .options import DEFAULT_RETRY, DEFAULT_TIMEOUT, RetryConfig
 from .otp import AsyncOtpService, Locale, OtpService, SendResponse
+from .userinfo import (
+    AsyncLoginService,
+    AsyncMiniAppsService,
+    LoginService,
+    LoginUserInfo,
+    MiniAppProfile,
+    MiniAppsService,
+    MiniAppUserInfo,
+    UserInfo,
+)
 
 __version__ = VERSION
 
@@ -48,6 +60,19 @@ __all__ = [
     # Clients
     "ConsoleClient",
     "AsyncConsoleClient",
+    "LoginClient",
+    "AsyncLoginClient",
+    "IDTokenClaims",
+    "IDTokenError",
+    "LoginKeySourceError",
+    "LoginService",
+    "MiniAppsService",
+    "AsyncLoginService",
+    "AsyncMiniAppsService",
+    "UserInfo",
+    "LoginUserInfo",
+    "MiniAppUserInfo",
+    "MiniAppProfile",
     # OTP
     "OtpService",
     "AsyncOtpService",
@@ -64,6 +89,7 @@ __all__ = [
     "LinkError",
     "ConfigError",
     "ValidationError",
+    "InvalidResponseError",
     "ConnectionError",
     "APIError",
     "AuthenticationError",

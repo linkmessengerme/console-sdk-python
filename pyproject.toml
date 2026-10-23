@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "link-console-sdk"
-version = "0.2.0"
-description = "Official Python SDK for the Link Developer Platform (Console API) — send OTP codes through the Link bot."
+version = "0.3.0"
+description = "Official Python SDK for Link Developer Platform — OTP, Login and Mini Apps UserInfo."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
     "httpx>=0.27,<1",
     "cryptography>=42",
+    "PyJWT>=2.10.1,<3",
 ]
 
 [project.optional-dependencies]

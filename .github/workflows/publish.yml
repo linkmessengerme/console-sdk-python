@@ -1,14 +1,20 @@
-name: publish
+name: Release
 
-# Publishes to PyPI via Trusted Publishing (OIDC) — no API token is stored
-# anywhere: not on disk, not in repository secrets. Fires on a v* tag.
+# Validate packages and publish the source release. Upload the reviewed dist
+# artifacts to PyPI with the package owner's scoped token (see RELEASING.md).
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+    paths: [pyproject.toml, .github/workflows/publish.yml]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -36,6 +42,19 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade build twine
       - run: python -m build
+      - name: Verify package and release versions
+        run: |
+          python -m pip install dist/*.whl
+          python - <<'PY'
+          import os, tomllib
+          import link_console_sdk
+          from importlib.metadata import version
+          with open('pyproject.toml', 'rb') as f:
+              expected = tomllib.load(f)['project']['version']
+          assert version('link-console-sdk') == link_console_sdk.__version__ == expected
+          if os.environ['GITHUB_REF_TYPE'] == 'tag':
+              assert os.environ['GITHUB_REF_NAME'] == 'v' + expected
+          PY
       # Catches bad metadata before it reaches PyPI, where a version is
       # immutable and cannot be re-uploaded.
       - run: python -m twine check dist/*
@@ -44,15 +63,20 @@ jobs:
           name: dist
           path: dist/
 
-  publish:
+  release:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      id-token: write
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Publish source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/release.sh "$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"

@@ -12,12 +12,14 @@ import httpx
 
 from ._internal.token import AsyncTokenSource, TokenSource
 from ._internal.transport import AsyncHttpTransport, HttpTransport
+from ._internal.userinfo import AsyncUserInfoTransport, UserInfoConfig, UserInfoTransport
 from .credentials import Credentials, from_client_key, parse_credentials
 from .errors import ConfigError
 from .options import DEFAULT_TIMEOUT, RetryConfig, resolve_retry, resolve_user_agent
 from .otp.service import AsyncOtpService, OtpService
+from .userinfo import AsyncLoginService, AsyncMiniAppsService, LoginService, MiniAppsService
 
-# The SDK only serves OTP; the app token is requested with this scope.
+# App tokens serve OTP. UserInfo receives its own user token per call.
 _SCOPE_OTP = "otp"
 
 
@@ -120,6 +122,11 @@ class ConsoleClient:
         )
         #: OTP delivery API.
         self.otp = OtpService(transport)
+        users = UserInfoTransport(
+            self._http, UserInfoConfig(creds.api_base_url, user_agent, timeout)
+        )
+        self.login = LoginService(users)
+        self.mini_apps = MiniAppsService(users)
 
     @classmethod
     def from_key_file(cls, path: str | Path, **options: Any) -> ConsoleClient:
@@ -202,6 +209,11 @@ class AsyncConsoleClient:
         )
         #: OTP delivery API.
         self.otp = AsyncOtpService(transport)
+        users = AsyncUserInfoTransport(
+            self._http, UserInfoConfig(creds.api_base_url, user_agent, timeout)
+        )
+        self.login = AsyncLoginService(users)
+        self.mini_apps = AsyncMiniAppsService(users)
 
     @classmethod
     def from_key_file(cls, path: str | Path, **options: Any) -> AsyncConsoleClient:
