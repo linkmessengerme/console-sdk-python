@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-10-29
+
+- Added Mini Apps merchant payments: create, read, lookup by merchant reference,
+  cancel and record fulfillment, with typed requests, responses and contract enums.
+- Added a separate lazily minted `payments` token cache, preserving OTP scope behavior.
+- Added lossless ProtoJSON int64 handling, durable operation-ID retries and support
+  for gateway ProtoJSON errors alongside the existing OTP error format.
+- Added Test merchant examples and contract fixtures covering business refusals,
+  token scope isolation, refresh and unchanged retry bodies.
+
 ## [0.3.0] — 2026-10-24
 
 ### Added

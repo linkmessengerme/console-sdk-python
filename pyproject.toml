@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "link-console-sdk"
-version = "0.3.0"
-description = "Official Python SDK for Link Developer Platform — OTP, Login and Mini Apps UserInfo."
+version = "0.4.0"
+description = "Official Python SDK for Link Developer Platform — OTP, Login, Mini Apps UserInfo and merchant payments."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

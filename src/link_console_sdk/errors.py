@@ -44,7 +44,7 @@ class ValidationError(LinkError):
 
 
 class InvalidResponseError(LinkError):
-    """Invalid UserInfo JSON, schema, size or subject; excludes raw response data."""
+    """Invalid API response, including UserInfo schema/subject and payment data."""
 
 
 class ConnectionError(LinkError):  # noqa: A001 — deliberate parity with Go/Node SDKs
@@ -68,12 +68,12 @@ class APIError(LinkError):
         self.message = message
         self.code = code
         self.details: dict[str, Any] | None = dict(details) if details is not None else None
-        #: Value of the ``X-Request-Id`` response header, when present.
+        #: X-Request-Id response header, or the ProtoJSON error's request_id.
         self.request_id = request_id
 
 
 class AuthenticationError(APIError):
-    """Bearer token rejected (``INVALID_TOKEN``, ``INSUFFICIENT_SCOPE``)."""
+    """Bearer rejected or access denied, including ProtoJSON authentication errors."""
 
 
 class IdempotencyError(APIError):
@@ -81,7 +81,7 @@ class IdempotencyError(APIError):
 
 
 class RateLimitError(APIError):
-    """Rate limit exceeded (``TOO_MANY_REQUESTS``)."""
+    """Rate limit exceeded (``TOO_MANY_REQUESTS`` or ``ERROR_CODE_RATE_LIMITED``)."""
 
     def __init__(self, *, retry_after: str | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -127,6 +127,16 @@ def decode_api_error(
                 raw_details = err.get("details")
                 if isinstance(raw_details, dict):
                     details = raw_details
+            elif isinstance(envelope.get("code"), str):
+                # Payments use common.v1.ApiError directly, without the OTP envelope.
+                code = envelope["code"]
+                message = str(envelope.get("detail") or message)
+                request_id = request_id or envelope.get("request_id")
+                details = {
+                    key: envelope[key]
+                    for key in ("trace_id", "field_violations", "rate_limit")
+                    if key in envelope
+                }
 
     init: dict[str, Any] = {
         "status_code": status_code,
@@ -135,11 +145,14 @@ def decode_api_error(
         "details": details,
         "request_id": request_id,
     }
-    if code in (CODE_INVALID_TOKEN, CODE_INSUFFICIENT_SCOPE):
+    if code in (
+        CODE_INVALID_TOKEN, CODE_INSUFFICIENT_SCOPE,
+        "ERROR_CODE_UNAUTHENTICATED", "ERROR_CODE_PERMISSION_DENIED",
+    ):
         return AuthenticationError(**init)
     if code == CODE_IDEMPOTENCY_KEY_CONFLICT:
         return IdempotencyError(**init)
-    if code == CODE_TOO_MANY_REQUESTS:
+    if code in (CODE_TOO_MANY_REQUESTS, "ERROR_CODE_RATE_LIMITED"):
         return RateLimitError(retry_after=headers.get("retry-after"), **init)
     return APIError(**init)
 

@@ -22,8 +22,8 @@ _HEADER_IDEMPOTENCY = "Idempotency-Key"
 _MAX_RESPONSE_BYTES = 1 << 20
 
 
-def _attempts(idempotency_key: str | None, retry: RetryConfig) -> int:
-    if idempotency_key and retry.max_retries > 0:
+def _attempts(idempotency_key: str | None, retry: RetryConfig, retry_safe: bool = False) -> int:
+    if (idempotency_key or retry_safe) and retry.max_retries > 0:
         return 1 + retry.max_retries
     return 1
 
@@ -85,9 +85,10 @@ class HttpTransport:
         body: Any,
         *,
         idempotency_key: str | None = None,
+        retry_safe: bool = False,
     ) -> dict[str, Any]:
         body_bytes = json.dumps(body or {}, separators=(",", ":")).encode("utf-8")
-        attempts = _attempts(idempotency_key, self._retry)
+        attempts = _attempts(idempotency_key, self._retry, retry_safe)
 
         last_err: Exception | None = None
         for attempt in range(attempts):
@@ -161,9 +162,10 @@ class AsyncHttpTransport:
         body: Any,
         *,
         idempotency_key: str | None = None,
+        retry_safe: bool = False,
     ) -> dict[str, Any]:
         body_bytes = json.dumps(body or {}, separators=(",", ":")).encode("utf-8")
-        attempts = _attempts(idempotency_key, self._retry)
+        attempts = _attempts(idempotency_key, self._retry, retry_safe)
 
         last_err: Exception | None = None
         for attempt in range(attempts):

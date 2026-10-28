@@ -17,10 +17,12 @@ from .credentials import Credentials, from_client_key, parse_credentials
 from .errors import ConfigError
 from .options import DEFAULT_TIMEOUT, RetryConfig, resolve_retry, resolve_user_agent
 from .otp.service import AsyncOtpService, OtpService
+from .payments.service import AsyncPaymentsService, PaymentsService
 from .userinfo import AsyncLoginService, AsyncMiniAppsService, LoginService, MiniAppsService
 
-# App tokens serve OTP. UserInfo receives its own user token per call.
+# Each service has its own scope and token cache. UserInfo uses user tokens.
 _SCOPE_OTP = "otp"
+_SCOPE_PAYMENTS = "payments"
 
 
 def _normalize_base_url(url: str | None) -> str | None:
@@ -104,24 +106,27 @@ class ConsoleClient:
         self._owns_http = http_client is None
         self._http = http_client or httpx.Client(timeout=timeout)
         user_agent = resolve_user_agent(user_agent_suffix)
-        tokens = TokenSource(
-            http_client=self._http,
-            token_url=creds.token_url,
-            client_id=creds.client_id,
-            issuer=creds.issuer,
-            private_key_pem=creds.private_key_pem,
-            scope=_SCOPE_OTP,
-            user_agent=user_agent,
-        )
-        transport = HttpTransport(
-            http_client=self._http,
-            tokens=tokens,
-            base_url=creds.api_base_url,
-            user_agent=user_agent,
-            retry=resolve_retry(retry),
-        )
-        #: OTP delivery API.
-        self.otp = OtpService(transport)
+
+        def build_transport(scope: str) -> HttpTransport:
+            tokens = TokenSource(
+                http_client=self._http,
+                token_url=creds.token_url,
+                client_id=creds.client_id,
+                issuer=creds.issuer,
+                private_key_pem=creds.private_key_pem,
+                scope=scope,
+                user_agent=user_agent,
+            )
+            return HttpTransport(
+                http_client=self._http,
+                tokens=tokens,
+                base_url=creds.api_base_url,
+                user_agent=user_agent,
+                retry=resolve_retry(retry),
+            )
+
+        self.otp = OtpService(build_transport(_SCOPE_OTP))
+        self.payments = PaymentsService(build_transport(_SCOPE_PAYMENTS))
         users = UserInfoTransport(
             self._http, UserInfoConfig(creds.api_base_url, user_agent, timeout)
         )
@@ -191,24 +196,27 @@ class AsyncConsoleClient:
         self._owns_http = http_client is None
         self._http = http_client or httpx.AsyncClient(timeout=timeout)
         user_agent = resolve_user_agent(user_agent_suffix)
-        tokens = AsyncTokenSource(
-            http_client=self._http,
-            token_url=creds.token_url,
-            client_id=creds.client_id,
-            issuer=creds.issuer,
-            private_key_pem=creds.private_key_pem,
-            scope=_SCOPE_OTP,
-            user_agent=user_agent,
-        )
-        transport = AsyncHttpTransport(
-            http_client=self._http,
-            tokens=tokens,
-            base_url=creds.api_base_url,
-            user_agent=user_agent,
-            retry=resolve_retry(retry),
-        )
-        #: OTP delivery API.
-        self.otp = AsyncOtpService(transport)
+
+        def build_transport(scope: str) -> AsyncHttpTransport:
+            tokens = AsyncTokenSource(
+                http_client=self._http,
+                token_url=creds.token_url,
+                client_id=creds.client_id,
+                issuer=creds.issuer,
+                private_key_pem=creds.private_key_pem,
+                scope=scope,
+                user_agent=user_agent,
+            )
+            return AsyncHttpTransport(
+                http_client=self._http,
+                tokens=tokens,
+                base_url=creds.api_base_url,
+                user_agent=user_agent,
+                retry=resolve_retry(retry),
+            )
+
+        self.otp = AsyncOtpService(build_transport(_SCOPE_OTP))
+        self.payments = AsyncPaymentsService(build_transport(_SCOPE_PAYMENTS))
         users = AsyncUserInfoTransport(
             self._http, UserInfoConfig(creds.api_base_url, user_agent, timeout)
         )
