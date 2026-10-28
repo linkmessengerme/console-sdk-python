@@ -16,6 +16,7 @@ An async client (:class:`AsyncConsoleClient`) exposes the same API with
 
 from __future__ import annotations
 
+from . import payments
 from ._internal.idempotency import new_idempotency_key
 from ._version import VERSION
 from .client import AsyncConsoleClient, ConsoleClient
@@ -41,6 +42,7 @@ from .errors import (
 from .login import AsyncLoginClient, IDTokenClaims, IDTokenError, LoginClient, LoginKeySourceError
 from .options import DEFAULT_RETRY, DEFAULT_TIMEOUT, RetryConfig
 from .otp import AsyncOtpService, Locale, OtpService, SendResponse
+from .payments import AsyncPaymentsService, PaymentsService
 from .userinfo import (
     AsyncLoginService,
     AsyncMiniAppsService,
@@ -73,6 +75,10 @@ __all__ = [
     "LoginUserInfo",
     "MiniAppUserInfo",
     "MiniAppProfile",
+    # Mini Apps merchant payments
+    "payments",
+    "PaymentsService",
+    "AsyncPaymentsService",
     # OTP
     "OtpService",
     "AsyncOtpService",
