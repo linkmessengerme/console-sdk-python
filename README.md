@@ -209,9 +209,23 @@ an `httpx.Client` / `httpx.AsyncClient`; an injected client remains caller-owned
 Verification checks EdDSA signature, `kid`, exact configured issuer, one allowed
 audience, matching `azp`, subject, `iat`/`exp`/optional `nbf` (30-second clock
 tolerance), and required expected nonce. It returns frozen `IDTokenClaims`:
-`issuer`, `sub`, `client_id`, `nonce`, `issued_at`, `expires_at` (Unix seconds).
+`issuer`, `sub`, `client_id`, `nonce`, `issued_at`, `expires_at` (Unix seconds)
+and `device_trust`.
 Access tokens and refreshed ID tokens without nonce are rejected. This verifier
 is for Link Login, not Mini App tokens.
+
+`device_trust` is Link's view of the device that signed in, when device attestation
+is on for the application in Link Console: `"verified"` (the genuine app on a
+genuine device), `"unlocked"` (Android with an unlocked bootloader), `"mismatch"`
+(a genuine attestation of a different app) or `"none"` (nothing is known: an old
+OS, an emulator, an older mobile SDK). It is `None` while attestation is off. Link
+enforces the mode you chose in Console; use the value for your own decisions, for
+example to ask for one more confirmation before a sensitive action:
+
+```python
+if claims.device_trust != "verified":
+    ...  # sign the person in, but treat the device as unverified
+```
 
 `IDTokenError` means rejected identity; `LoginKeySourceError` means discovery/keys
 are unavailable; `ConfigError` means invalid configuration. Discovery and JWKS

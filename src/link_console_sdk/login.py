@@ -42,6 +42,13 @@ class IDTokenClaims:
     nonce: str
     issued_at: int
     expires_at: int
+    #: Link's view of the device that signed in, from the ``device_trust`` claim:
+    #: ``"verified"`` (the genuine app on a genuine device), ``"unlocked"``
+    #: (Android with an unlocked bootloader), ``"mismatch"`` (a genuine
+    #: attestation of a different app) or ``"none"`` (nothing is known).
+    #: ``None`` while device attestation is off for the application in Link
+    #: Console. A later level is passed through unchanged.
+    device_trust: str | None = None
 
 
 def _origin(raw: str) -> str:
@@ -116,7 +123,12 @@ class _Verifier:
             or nbf > now + 30
         ):
             raise IDTokenError()
-        return IDTokenClaims(self.issuer, sub, aud[0], actual, issued, expires)
+        # Informational: a claim of an unexpected shape means "not reported" and
+        # never rejects an otherwise valid token.
+        trust = p.get("device_trust")
+        if not isinstance(trust, str) or not re.fullmatch(r"[a-z_]{1,32}", trust):
+            trust = None
+        return IDTokenClaims(self.issuer, sub, aud[0], actual, issued, expires, trust)
 
     def prepare(self, token: str, nonce: str) -> str:
         try:

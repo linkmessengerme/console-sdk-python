@@ -160,6 +160,37 @@ async def test_signature_cache_concurrency_and_subject_bound_phone(asynchronous:
 
 
 @pytest.mark.parametrize(
+    ("claim", "expected"),
+    [
+        ("verified", "verified"),
+        ("unlocked", "unlocked"),
+        ("mismatch", "mismatch"),
+        ("none", "none"),
+        ("a_later_level", "a_later_level"),
+        (None, None),
+        (7, None),
+        (True, None),
+        ({"level": "verified"}, None),
+        ("Not A Level", None),
+        ("", None),
+        ("a" * 33, None),
+    ],
+)
+async def test_device_trust_is_optional_and_never_rejects_a_token(
+    asynchronous: bool, claim: Any, expected: str | None
+) -> None:
+    f = Fixture()
+    async with f.opened(asynchronous) as client:
+        # Claims this SDK version does not know are ignored.
+        extra: dict[str, Any] = {"some_future_claim": {"version": 2}}
+        if claim is not None:
+            extra["device_trust"] = claim
+        claims = await verify(client, f.token(extra))
+        assert claims.device_trust == expected
+        assert claims.sub == "user1"
+
+
+@pytest.mark.parametrize(
     "claims",
     [
         {"iss": "https://evil.test"},
